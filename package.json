@@ -8,7 +8,13 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "synthesize": "cdk synth",
+    "bootstrap": "cdk bootstrap aws://266735837124/us-east-1",
+    "deploy": "npm run build && npm run synthesize && npm run bootstrap && cdk deploy",
+    "upload": "aws s3 sync ./dist s3://deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej --delete",
+    "invalidate-cache": "aws cloudfront create-invalidation --distribution-id E2ZDRNCL5J0S6Q --paths '/*'",
+    "full-deployment": "npm run deploy && npm run upload && npm run invalidate-cache"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
