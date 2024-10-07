@@ -1,5 +1,5 @@
 ## Task 2.2
-Automated Deployment
+Automated Deployment Web site link - djp9o2z86kcm0.cloudfront.net
 Within folder \src\manual dep AWS CDK was created files needed to deploy through CDK API
 Step by steps commands
  - mkdir infra
