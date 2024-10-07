@@ -14,7 +14,7 @@ Step by steps commands
  - inside infra run cdk synth
  - To bootstrap, run the following: cdk bootstrap aws://ACCOUNT-NUMBER/REGION
  - cdk deploy
- -DeployWebAppStack.deploymentViktoriiaBucketNameVS6734E508 = deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej
+ - DeployWebAppStack.deploymentViktoriiaBucketNameVS6734E508 = deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej
  - DeployWebAppStack.deploymentViktoriiaCloudFrontURLVS4E6C47CA = djp9o2z86kcm0.cloudfront.net
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
