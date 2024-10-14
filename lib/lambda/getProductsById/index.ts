@@ -55,9 +55,11 @@ export const handler = async (event: any): Promise<any> => {
 
     return {
         statusCode: 200,
-        body: JSON.stringify(product || { error: 'Product not found' }),
         headers: {
-            'Content-Type': 'application/json'
-        }
+            "Access-Control-Allow-Headers" : "Content-Type",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        },
+        body: JSON.stringify(product || { error: 'Product not found' }),
     };
 };
