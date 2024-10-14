@@ -1,7 +1,12 @@
-import * as AWS from 'aws-sdk';
-import { AWS_S3 } from '../config';
+const { S3 } = require('@aws-sdk/client-s3');
+const AWS_S3 = {
+    BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej ',
+    FILE_KEY: 'assets/productList.json'
+};
 
-const s3 = new AWS.S3();
+const s3 = new S3({
+    region: 'us-east-1'
+});
 
 export const handler = async (): Promise<any> => {
     let products;

@@ -1,4 +1,4 @@
 export const AWS_S3 = {
-  BUCKET_NAME: 'your-bucket-name',
-  FILE_KEY: 'path/to/your/productList.json'
+  BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej ',
+  FILE_KEY: 'assets/productList.json'
 };

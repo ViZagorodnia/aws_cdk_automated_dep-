@@ -12,6 +12,8 @@ export class ProductServiceStack extends cdk.Stack {
         // Define the getProductsList Lambda function
         const getProductsList = new lambda.Function(this, 'GetProductsList', {
             runtime: lambda.Runtime.NODEJS_20_X,
+            memorySize: 1024,
+            timeout: cdk.Duration.seconds(5),
             handler: 'getProductsList/index.handler',
             code: lambda.Code.fromAsset(join(__dirname, '/getProductsList')),
         });
@@ -24,6 +26,8 @@ export class ProductServiceStack extends cdk.Stack {
         // Define the getProductsById Lambda function
         const getProductsById = new lambda.Function(this, 'GetProductsById', {
             runtime: lambda.Runtime.NODEJS_20_X,
+            memorySize: 1024,
+            timeout: cdk.Duration.seconds(5),
             handler: 'getProductsById/index.handler',
             code: lambda.Code.fromAsset(join(__dirname, '/getProductsById')),
         });
@@ -78,7 +82,7 @@ export class ProductServiceStack extends cdk.Stack {
         }); // HTTP GET /products
 
         products.addCorsPreflight({
-          allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net/"],
+          allowOrigins: apigateway.Cors.ALL_ORIGINS,
           allowMethods: ["GET"],
         });
 
@@ -89,7 +93,7 @@ export class ProductServiceStack extends cdk.Stack {
         }); // HTTP GET /products/{productId}
 
         singleProduct.addCorsPreflight({
-          allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net/"],
+          allowOrigins: apigateway.Cors.ALL_ORIGINS,
           allowMethods: ["GET"],
         });
     }
