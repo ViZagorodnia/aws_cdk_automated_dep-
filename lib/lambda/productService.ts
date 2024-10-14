@@ -41,17 +41,56 @@ export class ProductServiceStack extends cdk.Stack {
         });
 
         // Define Lambda integration for /products
-        const getProductsListIntegration = new apigateway.LambdaIntegration(getProductsList);
+        const getProductsListIntegration = new apigateway.LambdaIntegration(getProductsList,  
+          {
+            integrationResponses: [
+              {
+                statusCode: "200",
+              },
+            ],
+            proxy: false,
+          }
+        );
 
         // Define Lambda integration for /products/{productId}
-        const getProductIntegration = new apigateway.LambdaIntegration(getProductsById);
+        const getProductIntegration = new apigateway.LambdaIntegration(getProductsById, 
+          {
+            integrationResponses: [
+              {
+                statusCode: "200",
+              },
+            ],
+            requestTemplates: {
+              "application/json": JSON.stringify({
+                pathParameters: {
+                  productId: "$input.params('productId')",
+                },
+              }),
+            },
+            proxy: false,
+          }
+        );
 
         // Define API method for getting all products
         const products = api.root.addResource('products');
-        products.addMethod('GET', getProductsListIntegration); // HTTP GET /products
+        products.addMethod('GET', getProductsListIntegration, {
+            methodResponses: [{ statusCode: "200" }],
+        }); // HTTP GET /products
+
+        products.addCorsPreflight({
+          allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net/"],
+          allowMethods: ["GET"],
+        });
 
         // Define API method for getting a single product by ID
         const singleProduct = products.addResource('{productId}');
-        singleProduct.addMethod('GET', getProductIntegration); // HTTP GET /products/{productId}
+        singleProduct.addMethod('GET', getProductIntegration, {
+          methodResponses: [{ statusCode: "200" }],
+        }); // HTTP GET /products/{productId}
+
+        singleProduct.addCorsPreflight({
+          allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net/"],
+          allowMethods: ["GET"],
+        });
     }
 }
