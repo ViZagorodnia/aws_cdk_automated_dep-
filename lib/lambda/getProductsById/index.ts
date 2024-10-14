@@ -1,12 +1,23 @@
-const { S3 } = require('@aws-sdk/client-s3');
+import { S3 } from '@aws-sdk/client-s3';
+import { Readable } from 'stream';
+
 const AWS_S3 = {
-    BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej ',
+    BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej',
     FILE_KEY: 'assets/productList.json'
-  };
+};
 
 const s3 = new S3({
     region: 'us-east-1'
 });
+
+const getStreamData = (stream: Readable): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        stream.on('data', chunk => data += chunk);
+        stream.on('error', err => reject(err));
+        stream.on('end', () => resolve(data));
+    });
+};
 
 export const handler = async (event: any): Promise<any> => {
     let product;
@@ -14,21 +25,25 @@ export const handler = async (event: any): Promise<any> => {
     try {
         const params = {
             Bucket: AWS_S3.BUCKET_NAME,
-            Key: AWS_S3.FILE_KEY,
+            Key: AWS_S3.FILE_KEY
         };
-        // Fetch products from S3 bucket and parse JSON data
-        const data = await s3.getObject(params).promise();
+
+        const { Body } = await s3.getObject(params);
+
+        if (!Body) {
+            throw new Error('Product data is empty or unavailable');
+        }
         
-        if (!data.Body) {
-          throw new Error('Product data is empty or unavailable');
+        if (!(Body instanceof Readable)) {
+            throw new Error('Expected Body to be a Readable stream');
         }
 
-        const products = JSON.parse(data.Body.toString('utf-8'));
-        product = products.find((p: any) => p.id === event.pathParameters.productId);
+        const bodyContents: string = await getStreamData(Body);
+        const products = JSON.parse(bodyContents);
+        product = products.find((p: any) => p.productId === event.pathParameters.productId);
 
     } catch (err) {
         console.error('Error fetching product: ', err);
-        
         return {
             statusCode: 404,
             body: JSON.stringify({ error: 'Product not found' }),
