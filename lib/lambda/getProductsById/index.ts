@@ -1,65 +1,65 @@
-import { S3 } from '@aws-sdk/client-s3';
-import { Readable } from 'stream';
+import * as AWS from 'aws-sdk';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-const AWS_S3 = {
-    BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej',
-    FILE_KEY: 'assets/productList.json'
-};
+const dynamo = new AWS.DynamoDB.DocumentClient();
 
-const s3 = new S3({
-    region: 'us-east-1'
-});
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName'; 
 
-const getStreamData = (stream: Readable): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        let data = '';
-        stream.on('data', chunk => data += chunk);
-        stream.on('error', err => reject(err));
-        stream.on('end', () => resolve(data));
-    });
-};
-
-export const handler = async (event: any): Promise<any> => {
-    let product;
-
-    try {
-        const params = {
-            Bucket: AWS_S3.BUCKET_NAME,
-            Key: AWS_S3.FILE_KEY
-        };
-
-        const { Body } = await s3.getObject(params);
-
-        if (!Body) {
-            throw new Error('Product data is empty or unavailable');
-        }
-        
-        if (!(Body instanceof Readable)) {
-            throw new Error('Expected Body to be a Readable stream');
-        }
-
-        const bodyContents: string = await getStreamData(Body);
-        const products = JSON.parse(bodyContents);
-        product = products.find((p: any) => p.productId === event.pathParameters.productId);
-
-    } catch (err) {
-        console.error('Error fetching product: ', err);
+    // Перевірка, що pathParameters і productId існують
+    const productId = event.pathParameters?.productId;
+    if (!productId) {
         return {
-            statusCode: 404,
-            body: JSON.stringify({ error: 'Product not found' }),
+            statusCode: 400,
+            body: JSON.stringify({ error: 'Product ID is required' }),
             headers: {
-                'Content-Type': 'application/json'
-            }
+                "Access-Control-Allow-Headers" : "Content-Type",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
         };
     }
-
-    return {
-        statusCode: 200,
-        headers: {
-            "Access-Control-Allow-Headers" : "Content-Type",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+  
+    const params = {
+        TableName: tableName,
+        Key: {
+            id: productId
         },
-        body: JSON.stringify(product || { error: 'Product not found' }),
     };
+    
+    try {
+        const result = await dynamo.get(params).promise();
+        if (result.Item) {
+            return {
+                statusCode: 200,
+                body: JSON.stringify(result.Item),
+                headers: {
+                    "Access-Control-Allow-Headers" : "Content-Type",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                },
+            };
+        } else {
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ error: 'Product not found' }),
+                headers: {
+                    "Access-Control-Allow-Headers" : "Content-Type",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                },
+            };
+        }
+    } catch (error) {
+        console.error('Error fetching product by ID:', error);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'Failed to get product by ID. Please try again later.' }),
+            headers: {
+                "Access-Control-Allow-Headers" : "Content-Type",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
+        };
+    }
 };

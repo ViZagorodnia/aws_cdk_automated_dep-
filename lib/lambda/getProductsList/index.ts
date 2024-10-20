@@ -1,65 +1,54 @@
-import { S3 } from '@aws-sdk/client-s3';
-import { Readable } from 'stream';
+import * as AWS from 'aws-sdk';
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 
-const AWS_S3 = {
-    BUCKET_NAME: 'deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej',
-    FILE_KEY: 'assets/productList.json'
-};
+const dynamo = new AWS.DynamoDB.DocumentClient();
 
-const s3 = new S3({
-    region: 'us-east-1'
-});
+export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    // Fallback table name if the environment variable is not set
+    const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName'; 
 
-const getStreamData = (stream: Readable): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const chunks: Buffer[] = []; // Явное определение типа
-        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-        stream.on('error', reject);
-        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    });
-};
-
-export const handler = async (): Promise<any> => {
-    let products;
-
+    // Setting up parameters for the scan operation on DynamoDB
+    const params = {
+        TableName: tableName,
+    };
+    
     try {
-        const params = {
-            Bucket: AWS_S3.BUCKET_NAME,
-            Key: AWS_S3.FILE_KEY,
-        };
-
-        const { Body } = await s3.getObject(params);
-
-        if (!Body) {
-            throw new Error('Product data is empty or unavailable');
+        // Perform the scan operation to retrieve all records from the DynamoDB table
+        const result = await dynamo.scan(params).promise();
+        // Check if items exist and have length to return proper data
+        if (result.Items && result.Items.length > 0) {
+            return {
+                statusCode: 200,
+                body: JSON.stringify(result.Items),
+                headers: {
+                    "Access-Control-Allow-Headers" : "Content-Type",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                }
+            };
+        } else {
+            // Return a 404 status if no products are found
+            return {
+                statusCode: 404,
+                body: JSON.stringify({ error: 'No products found' }),
+                headers: {
+                    "Access-Control-Allow-Headers" : "Content-Type",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                }
+            };
         }
-
-        if (!(Body instanceof Readable)) {
-            throw new Error('Expected Body to be a stream');
-        }
-
-        const bodyContents = await getStreamData(Body);
-        products = JSON.parse(bodyContents);
-
-    } catch (err) {
-        console.error('Error fetching products: ', err);
-
+    } catch (error) {
+        // Log the error and return a server error status
+        console.error('Error scanning DynamoDB:', error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: 'Failed to load product data' }),
+            body: JSON.stringify({ error: 'Failed to retrieve product list' }),
             headers: {
-                'Content-Type': 'application/json'
+                "Access-Control-Allow-Headers" : "Content-Type",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
             }
         };
     }
-
-    return {
-        statusCode: 200,
-        headers: {
-            "Access-Control-Allow-Headers" : "Content-Type",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-        },
-        body: JSON.stringify(products || { error: 'Product not found' }),
-    };
 };

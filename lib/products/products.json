@@ -1,0 +1,66 @@
+[
+  {
+    "count": 4,
+    "description": "Elegant summer dress for women, light fabric, perfect for hot days.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73c48a80aa",
+    "price": 150,
+    "title": "Summer Dress",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/1.jpg"
+  },
+  {
+    "count": 6,
+    "description": "Chic blazer for business and casual looks, versatile and stylish.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73c48a80a0",
+    "price": 190,
+    "title": "Women's Blazer",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/2.jpg"
+  },
+  {
+    "count": 7,
+    "description": "Comfortable and trendy yoga pants for active and daily wear.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73c48a80a2",
+    "price": 230,
+    "title": "Yoga Pants",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/3.jpg"
+  },
+  {
+    "count": 12,
+    "description": "Stylish handbag for every occasion, spacious and durable.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73c48a80a1",
+    "price": 315,
+    "title": "Handbag",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/4.jpg"
+  },
+  {
+    "count": 7,
+    "description": "Cozy and fashionable winter coat, keep warm in style.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73c48a80a3",
+    "price": 263,
+    "title": "Winter Coat",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/5.jpg"
+  },
+  {
+    "count": 8,
+    "description": "Classic high heels for a touch of elegance.",
+    "productId": "7567ec4b-b10c-48c5-9345-fc73348a80a1",
+    "price": 415,
+    "title": "High Heels",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/6.jpg"
+  },
+  {
+    "count": 2,
+    "description": "Luxurious evening gown for special occasions, mesmerizing design.",
+    "productId": "7567ec4b-b10c-48c5-9445-fc73c48a80a2",
+    "price": 823,
+    "title": "Evening Gown",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/7.jpg"
+  },
+  {
+    "count": 3,
+    "description": "Light scarf, perfect accessory for layering, multiple colors available.",
+    "productId": "7567ec4b-b10c-45c5-9345-fc73c48a80a1",
+    "price": 335,
+    "title": "Women's Scarf",
+    "img": "https://djp9o2z86kcm0.cloudfront.net/assets/images/8.jpg"
+  }
+]
