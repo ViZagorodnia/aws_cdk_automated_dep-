@@ -23,6 +23,7 @@ export class ProductServiceStack extends cdk.Stack {
             tableArn: 'arn:aws:dynamodb:us-east-1:266735837124:table/Products'
         });
 
+
          // Define the createProduct Lambda function
          const createProduct = new lambda.Function(this, 'CreateProduct', {
             runtime: lambda.Runtime.NODEJS_20_X,
@@ -35,6 +36,8 @@ export class ProductServiceStack extends cdk.Stack {
                 PRODUCTS_TABLE_NAME: productsTable.tableName,
             }
         });
+
+        productsTable.grantReadWriteData(createProduct);
 
         // Define the getProductsList Lambda function
         const getProductsList = new lambda.Function(this, 'GetProductsList', {
@@ -49,6 +52,8 @@ export class ProductServiceStack extends cdk.Stack {
             }
         });
 
+        productsTable.grantReadWriteData(getProductsList);
+
         // Define the getProductsById Lambda function
         const getProductsById = new lambda.Function(this, 'GetProductsById', {
             runtime: lambda.Runtime.NODEJS_20_X,
@@ -61,6 +66,8 @@ export class ProductServiceStack extends cdk.Stack {
                 PRODUCTS_TABLE_NAME: productsTable.tableName
             }
         });
+        
+        productsTable.grantReadWriteData(getProductsById);
 
         // Define API Gateway
         const api = new apigateway.RestApi(this, "product-api", {
