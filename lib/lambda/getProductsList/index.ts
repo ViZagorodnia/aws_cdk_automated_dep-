@@ -1,54 +1,49 @@
-import * as AWS from 'aws-sdk';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
-const dynamo = new AWS.DynamoDB.DocumentClient();
+const dynamoDBClient = new DynamoDBClient();
+const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    // Fallback table name if the environment variable is not set
-    const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName'; 
+export const getProductsListHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const productsTableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName';
+    const stockTableName = process.env.STOCK_TABLE_NAME || 'DefaultStockTableName';
 
-    // Setting up parameters for the scan operation on DynamoDB
-    const params = {
-        TableName: tableName,
-    };
-    
     try {
-        // Perform the scan operation to retrieve all records from the DynamoDB table
-        const result = await dynamo.scan(params).promise();
-        // Check if items exist and have length to return proper data
-        if (result.Items && result.Items.length > 0) {
-            return {
-                statusCode: 200,
-                body: JSON.stringify(result.Items),
-                headers: {
-                    "Access-Control-Allow-Headers" : "Content-Type",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-                }
-            };
+        const products = await scanTable(productsTableName);
+        const stock = await scanTable(stockTableName);
+
+        // Merge stock data into products based on 'id'/'product_id' match
+        const mergedData = products.map(product => ({
+            ...product,
+            stock: stock.find(stockItem => stockItem.product_id === product.id)?.count || 0
+        }));
+
+        if (mergedData.length > 0) {
+            return createResponse(200, mergedData);
         } else {
-            // Return a 404 status if no products are found
-            return {
-                statusCode: 404,
-                body: JSON.stringify({ error: 'No products found' }),
-                headers: {
-                    "Access-Control-Allow-Headers" : "Content-Type",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-                }
-            };
+            return createResponse(404, { error: 'No products found' });
         }
     } catch (error) {
-        // Log the error and return a server error status
-        console.error('Error scanning DynamoDB:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Failed to retrieve product list' }),
-            headers: {
-                "Access-Control-Allow-Headers" : "Content-Type",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            }
-        };
+        console.error('Error retrieving data from DynamoDB:', error);
+        return createResponse(500, { error: 'Failed to retrieve product list' });
     }
 };
+
+async function scanTable(tableName: string) {
+    const params = new ScanCommand({ TableName: tableName });
+    const { Items } = await documentClient.send(params);
+    return Items || [];
+}
+
+function createResponse(statusCode: number, body: object): APIGatewayProxyResult {
+    return {
+        statusCode: statusCode,
+        body: JSON.stringify(body),
+        headers: {
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        },
+    };
+}

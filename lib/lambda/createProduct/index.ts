@@ -1,21 +1,15 @@
-import * as AWS from 'aws-sdk';
-import { v4 as uuidv4 } from 'uuid';  // UUID generation
-import { Product, StockItem } from './types';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { v4 as uuidv4 } from 'uuid';
+import { Product, StockItem } from './types';
 
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const dynamoDBClient = new DynamoDBClient();
+const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export const createProductHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     if (!event.body) {
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ message: 'Invalid request: No body provided' }),
-          headers: {
-            "Access-Control-Allow-Headers" : "Content-Type",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-          },
-        };
+        return createResponse(400, 'Invalid request: No body provided');
     }
 
     let userInput: Omit<Product, 'productId' | 'img'>;
@@ -23,60 +17,44 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
         userInput = JSON.parse(event.body);
     } catch (error) {
         console.error('Error parsing JSON:', error);
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ message: 'Invalid request: Body is not valid JSON' }),
-            headers: {
-              "Access-Control-Allow-Headers" : "Content-Type",
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            },
-        };
+        return createResponse(400, 'Invalid request: Body is not valid JSON');
     }
 
-    const product: Product = {
-        ...userInput,
-        productId: uuidv4(),  // unique identifier
-        img: "https://djp9o2z86kcm0.cloudfront.net/assets/images/1.jpg"
-    };
-
-    const stockItem: StockItem = {
-        product_id: product.productId,
-        count: product.count
-    };
-
+    const productId = uuidv4();
+    const imgURL = "https://djp9o2z86kcm0.cloudfront.net/assets/images/1.jpg";
+    
     try {
-        // add item to 'Products' table
-        await dynamoDB.put({
-            TableName: 'Products',
-            Item: product
-        }).promise();
-
-        // add item to 'Stock' table
-        await dynamoDB.put({
-            TableName: 'Stock',
-            Item: stockItem
-        }).promise();
-
-        return {
-            statusCode: 201,
-            body: JSON.stringify({ message: 'Product created successfully!', productId: product.productId }),
-            headers: {
-              "Access-Control-Allow-Headers" : "Content-Type",
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            },
-        };
+        await createProduct(userInput, productId, imgURL);
+        return createResponse(201, { message: 'Product created successfully!', productId });
     } catch (error) {
         console.error('Error interacting with DynamoDB:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ message: 'Failed to create product' }),
-            headers: {
-              "Access-Control-Allow-Headers" : "Content-Type",
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            },
-        };
+        return createResponse(500, 'Failed to create product');
     }
 };
+
+async function createProduct(userInput: Omit<Product, 'productId' | 'img'>, productId: string, imgURL: string) {
+    const product: Product = { ...userInput, productId, img: imgURL };
+    const stockItem: StockItem = { product_id: productId, count: product.count };
+
+    await documentClient.send(new PutCommand({
+        TableName: 'Products',
+        Item: product
+    }));
+
+    await documentClient.send(new PutCommand({
+        TableName: 'Stock',
+        Item: stockItem
+    }));
+}
+
+function createResponse(statusCode: number, message: string | object): APIGatewayProxyResult {
+    return {
+        statusCode: statusCode,
+        body: JSON.stringify(typeof message === 'string' ? { message } : message),
+        headers: {
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        },
+    };
+}

@@ -1,65 +1,48 @@
-import * as AWS from 'aws-sdk';
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
-const dynamo = new AWS.DynamoDB.DocumentClient();
+const dynamoDBClient = new DynamoDBClient();
+const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-    const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName'; 
-
-    // Перевірка, що pathParameters і productId існують
+export const getProductsByIdHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+    const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName';
     const productId = event.pathParameters?.productId;
+
     if (!productId) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: 'Product ID is required' }),
-            headers: {
-                "Access-Control-Allow-Headers" : "Content-Type",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            },
-        };
+        return createResponse(400, { error: 'Product ID is required' });
     }
-  
-    const params = {
-        TableName: tableName,
-        Key: {
-            id: productId
-        },
-    };
-    
+
     try {
-        const result = await dynamo.get(params).promise();
-        if (result.Item) {
-            return {
-                statusCode: 200,
-                body: JSON.stringify(result.Item),
-                headers: {
-                    "Access-Control-Allow-Headers" : "Content-Type",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-                },
-            };
+        const item = await fetchProductById(tableName, productId);
+        if (item) {
+            return createResponse(200, item);
         } else {
-            return {
-                statusCode: 404,
-                body: JSON.stringify({ error: 'Product not found' }),
-                headers: {
-                    "Access-Control-Allow-Headers" : "Content-Type",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-                },
-            };
+            return createResponse(404, { error: 'Product not found' });
         }
     } catch (error) {
         console.error('Error fetching product by ID:', error);
-        return {
-            statusCode: 500,
-            body: JSON.stringify({ error: 'Failed to get product by ID. Please try again later.' }),
-            headers: {
-                "Access-Control-Allow-Headers" : "Content-Type",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
-            },
-        };
+        return createResponse(500, { error: 'Failed to get product by ID. Please try again later.' });
     }
 };
+
+async function fetchProductById(tableName: string, productId: string) {
+    const params = new GetCommand({
+        TableName: tableName,
+        Key: { id: productId },
+    });
+    const { Item } = await documentClient.send(params);
+    return Item;
+}
+
+function createResponse(statusCode: number, body: object): APIGatewayProxyResult {
+    return {
+        statusCode: statusCode,
+        body: JSON.stringify(body),
+        headers: {
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+        }
+    };
+}

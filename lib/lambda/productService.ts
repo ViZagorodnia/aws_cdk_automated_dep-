@@ -3,8 +3,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import {Construct} from 'constructs';
-import {join} from 'path';
+import { Construct } from 'constructs';
+import { join } from 'path';
 
 export class ProductServiceStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -18,56 +18,46 @@ export class ProductServiceStack extends cdk.Stack {
                 iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBFullAccess'), // Consider using more restrictive policies in production
             ],
         });
+        
+        // Add policy for access to S3 resources (as needed)
+        lambdaRole.addToPolicy(new iam.PolicyStatement({
+            actions: ['s3:GetObject'],
+            resources: ['arn:aws:s3:::deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej/*'],
+        }));
 
-        const productsTable = dynamodb.Table.fromTableAttributes(this, 'ProductsTable', {
-            tableArn: 'arn:aws:dynamodb:us-east-1:266735837124:table/Products'
+        // Define DynamoDB tables
+        const productsTable = new dynamodb.Table(this, "ProductsTable", {
+            tableName: 'Products',
+            partitionKey: {
+                name: "id",
+                type: dynamodb.AttributeType.STRING,
+            },
         });
 
+        const stockTable = new dynamodb.Table(this, "StockTable", {
+            tableName: 'Stock',
+            partitionKey: {
+                name: "product_id",
+                type: dynamodb.AttributeType.STRING,
+            },
+        });
 
-         // Define the createProduct Lambda function
-         const createProduct = new lambda.Function(this, 'CreateProduct', {
+        // Define the Lambda function to manage products
+        const manageProducts = new lambda.Function(this, 'ManageProducts', {
             runtime: lambda.Runtime.NODEJS_20_X,
             memorySize: 1024,
             timeout: cdk.Duration.seconds(5),
-            handler: 'createProduct/index.handler',
-            code: lambda.Code.fromAsset(join(__dirname, 'createProduct')),
+            handler: 'manageProducts.handler',
+            code: lambda.Code.fromAsset(join(__dirname, './')),
             role: lambdaRole,
             environment: {
                 PRODUCTS_TABLE_NAME: productsTable.tableName,
+                STOCK_TABLE_NAME: stockTable.tableName,
             }
         });
 
-        productsTable.grantReadWriteData(createProduct);
-
-        // Define the getProductsList Lambda function
-        const getProductsList = new lambda.Function(this, 'GetProductsList', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            memorySize: 1024,
-            timeout: cdk.Duration.seconds(5),
-            handler: 'getProductsList/index.handler',
-            code: lambda.Code.fromAsset(join(__dirname, 'getProductsList')),
-            role: lambdaRole,
-            environment: {
-                PRODUCTS_TABLE_NAME: productsTable.tableName
-            }
-        });
-
-        productsTable.grantReadWriteData(getProductsList);
-
-        // Define the getProductsById Lambda function
-        const getProductsById = new lambda.Function(this, 'GetProductsById', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            memorySize: 1024,
-            timeout: cdk.Duration.seconds(5),
-            handler: 'getProductsById/index.handler',
-            code: lambda.Code.fromAsset(join(__dirname, 'getProductsById')),
-            role: lambdaRole,
-            environment: {
-                PRODUCTS_TABLE_NAME: productsTable.tableName
-            }
-        });
-        
-        productsTable.grantReadWriteData(getProductsById);
+        productsTable.grantReadWriteData(manageProducts);
+        stockTable.grantReadWriteData(manageProducts);
 
         // Define API Gateway
         const api = new apigateway.RestApi(this, "product-api", {
@@ -79,29 +69,15 @@ export class ProductServiceStack extends cdk.Stack {
             }
         });
 
-        // Define Lambda integration for /products
-        const getProductsListIntegration = new apigateway.LambdaIntegration(getProductsList);
+        // Define Lambda integration for managing products
+        const manageProductsIntegration = new apigateway.LambdaIntegration(manageProducts);
 
-        // Define Lambda integration for creating products unde /products resource
-        const addProductIntegration = new apigateway.LambdaIntegration(createProduct);
-
-        // Define Lambda integration for /products/{productId}
-        const getProductIntegration = new apigateway.LambdaIntegration(getProductsById); 
-
-        // Define API method for getting all products
+        // Define API methods for product management
         const products = api.root.addResource('products');
-        products.addMethod('GET', getProductsListIntegration, {
-            methodResponses: [{ statusCode: "200" }],
-        });
-        products.addMethod('POST', addProductIntegration, {
-            methodResponses: [{ statusCode: "200" }],
-        });
-        
+        products.addMethod('GET', manageProductsIntegration); // List or get single product
+        products.addMethod('POST', manageProductsIntegration); // Create a new product
 
-        // Define API method for getting a single product by ID
         const singleProduct = products.addResource('{productId}');
-        singleProduct.addMethod('GET', getProductIntegration, {
-            methodResponses: [{ statusCode: "200" }],
-        });
+        singleProduct.addMethod('GET', manageProductsIntegration); // Get a single product by ID
     }
 }
