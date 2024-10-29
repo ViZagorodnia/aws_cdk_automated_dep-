@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { createProductHandler } from './createProduct/index';
-import { getProductsByIdHandler } from './getProductsById/index';
-import { getProductsListHandler } from './getProductsList/index';
+import { createProductHandler } from '../createProduct/index';
+import { getProductsByIdHandler } from '../getProductsById/index';
+import { getProductsListHandler } from '../getProductsList/index';
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
     try {

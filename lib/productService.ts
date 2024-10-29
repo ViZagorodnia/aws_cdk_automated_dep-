@@ -48,7 +48,7 @@ export class ProductServiceStack extends cdk.Stack {
             memorySize: 1024,
             timeout: cdk.Duration.seconds(5),
             handler: 'manageProducts.handler',
-            code: lambda.Code.fromAsset(join(__dirname, './')),
+            code: lambda.Code.fromAsset(join(__dirname, './lambda/manageProducts')),
             role: lambdaRole,
             environment: {
                 PRODUCTS_TABLE_NAME: productsTable.tableName,
