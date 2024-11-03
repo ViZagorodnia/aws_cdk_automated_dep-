@@ -1,89 +1,85 @@
-import * as s3 from "aws-cdk-lib/aws-s3";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
+import { PolicyStatement, Effect } from "aws-cdk-lib/aws-iam";
+import { Bucket, EventType } from "aws-cdk-lib/aws-s3";
+import { Function, Runtime, Code } from "aws-cdk-lib/aws-lambda";
+import { RestApi, LambdaIntegration } from "aws-cdk-lib/aws-apigateway";
+import { LambdaDestination } from "aws-cdk-lib/aws-s3-notifications";
 import { join } from 'path';
-import * as apigateway from "aws-cdk-lib/aws-apigateway";
-import * as s3Notifications from "aws-cdk-lib/aws-s3-notifications";
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+    
+    const productsFileBucket = this.createProductsFileBucket();
+    const api = this.createAPIGateway();
+    const [importedProductsFileLambda, importedFileParserLambda] = this.createLambdaFunctions(productsFileBucket);
 
-    const productsFileBucket = new s3.Bucket(this, "imported-products-file-bucket", {
+    this.configureBucketNotifications(productsFileBucket, importedFileParserLambda);
+    this.addAPIIntegration(api, importedProductsFileLambda);
+  }
+
+  private createProductsFileBucket(): Bucket {
+    return new Bucket(this, "imported-products-file-bucket", {
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+  }
 
-    const api = new apigateway.RestApi(this, "imported-files-api", {
+  private createAPIGateway(): RestApi {
+    return new RestApi(this, "imported-files-api", {
       restApiName: "API Gateway for import service",
       description: "This API serves the import lambda functions.",
     });
+  }
 
-    const importedProductsFileLambdaFunction = new lambda.Function(
-      this,
-      "imported-products-file-lambda-function",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        memorySize: 1024,
-        timeout: cdk.Duration.seconds(5),
-        handler: 'index.handler',
-        code: lambda.Code.fromAsset(join(__dirname, './lambda/importProductsFile')),
-        environment: {
-          BUCKET_NAME: productsFileBucket.bucketName,
-        },
-      }
-    );
-
-    const importedFileParserLambdaFunction = new lambda.Function(
-      this,
-      "imported-file-parser-lambda-function",
-      {
-        runtime: lambda.Runtime.NODEJS_20_X,
-        memorySize: 1024,
-        timeout: cdk.Duration.seconds(5),
-        handler: 'index.handler',
-        code: lambda.Code.fromAsset(join(__dirname, './lambda/importFileParser')),
-        environment: {
-          BUCKET_NAME: productsFileBucket.bucketName,
-        },
-      }
-    );
-
-    productsFileBucket.grantRead(importedProductsFileLambdaFunction);
-    productsFileBucket.grantRead(importedFileParserLambdaFunction);
-
-    const s3Policy = new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ["s3:GetObject"],
-      resources: [`${productsFileBucket.bucketArn}/uploaded/*`],
+  private createLambdaFunctions(bucket: Bucket): Function[] {
+    const handlerConfig = {
+      runtime: Runtime.NODEJS_20_X,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(5),
+      code: Code.fromAsset(join(__dirname, './lambda')),
+      environment: { BUCKET_NAME: bucket.bucketName },
+    };
+    
+    const importedProductsFileLambda = new Function(this, "imported-products-file-lambda", {
+      ...handlerConfig,
+      handler: 'importProductsFile.index.handler'
+    });
+    
+    const importedFileParserLambda = new Function(this, "imported-file-parser-lambda", {
+      ...handlerConfig,
+      handler: 'importFileParser.index.handler'
     });
 
-    importedProductsFileLambdaFunction.addToRolePolicy(s3Policy);
+    bucket.grantRead(importedProductsFileLambda);
+    bucket.grantRead(importedFileParserLambda);
+    importedProductsFileLambda.addToRolePolicy(new PolicyStatement({
+      effect: Effect.ALLOW,
+      actions: ["s3:GetObject"],
+      resources: [`${bucket.bucketArn}/uploaded/*`],
+    }));
 
-    productsFileBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3Notifications.LambdaDestination(importedFileParserLambdaFunction),
-      { prefix: "uploaded/" }
-    );
+    return [importedProductsFileLambda, importedFileParserLambda];
+  }
+  
+  private configureBucketNotifications(bucket: Bucket, lambdaFunction: Function): void {
+    bucket.addEventNotification(EventType.OBJECT_CREATED, new LambdaDestination(lambdaFunction), {
+      prefix: "uploaded/"
+    });
+  }
 
-    const importProductsFileLambdaIntegration =
-      new apigateway.LambdaIntegration(importedProductsFileLambdaFunction, {
-        requestTemplates: {
-          "application/json": `{ "fileName": "$input.params('fileName')", "ext": "$input.params('ext')" }`,
-        },
-        integrationResponses: [
-          {
-            statusCode: "200",
-          },
-        ],
-        proxy: true,
-      });
+  private addAPIIntegration(api: RestApi, lambdaFunction: Function): void {
+    const lambdaIntegration = new LambdaIntegration(lambdaFunction, {
+      requestTemplates: {
+        "application/json": `{ "fileName": "$input.params('fileName')", "ext": "$input.params('ext')" }`
+      },
+      integrationResponses: [{ statusCode: "200" }],
+      proxy: true,
+    });
 
     const importsResource = api.root.addResource("import");
-
-    importsResource.addMethod("GET", importProductsFileLambdaIntegration, {
+    importsResource.addMethod("GET", lambdaIntegration, {
       methodResponses: [{ statusCode: "200" }],
     });
 

@@ -4,32 +4,40 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export async function handler(event: APIGatewayProxyEvent) {
   const bucketName = process.env.BUCKET_NAME as string;
+  const s3 = new S3Client({ region: "us-east-1" });
+  
+  const response = await processEvent(event, s3, bucketName);
+  return formatResponse(response.statusCode, response.body);
+}
+
+async function processEvent(event: APIGatewayProxyEvent, s3: S3Client, bucketName: string) {
   const queryParams = event.queryStringParameters;
 
-  const s3 = new S3Client({ region: "us-east-1" });
-
   if (!queryParams || !queryParams.fileName) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({
-        message: "File name is required in the query string",
-      }),
-    };
+    return { statusCode: 400, body: { message: "File name is required in the query string" }};
   }
+  
+  const fileName = queryParams.fileName;
+  const ext = queryParams.ext || "csv";
+  const key = `uploaded/${fileName}.${ext}`;
+  
+  try {
+    const signedUrl = await generateSignedUrl(s3, bucketName, key);
+    return { statusCode: 200, body: { signedUrl }};
+  } catch (error) {
+    console.error("Error generating signed URL:", error);
+    return { statusCode: 500, body: { message: "Failed to generate signed URL" }};
+  }
+}
 
-  const ext = queryParams.ext ?? "csv";
+async function generateSignedUrl(s3: S3Client, bucketName: string, key: string): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+  return getSignedUrl(s3, command);
+}
 
-  const key = `uploaded/${queryParams.fileName}.${ext}`;
-
-  const command = new GetObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-  });
-
-  const signedUrl = await getSignedUrl(s3, command);
-
+function formatResponse(statusCode: number, body: object): { statusCode: number, body: string } {
   return {
-    statusCode: 200,
-    body: JSON.stringify({ signedUrl }),
+    statusCode,
+    body: JSON.stringify(body),
   };
 }
