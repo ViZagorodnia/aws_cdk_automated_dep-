@@ -88,7 +88,7 @@ export class ImportServiceStack extends cdk.Stack {
     });
 
     importsResource.addCorsPreflight({
-      allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net/"],
+      allowOrigins: ["https://djp9o2z86kcm0.cloudfront.net"],
       allowMethods: ["GET"],
     });
   }
