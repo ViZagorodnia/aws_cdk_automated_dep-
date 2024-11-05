@@ -6,28 +6,22 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import { Construct } from 'constructs';
 import { join } from 'path';
 
+const PRODUCTS_TABLE_NAME = 'Products';
+const STOCK_TABLE_NAME = 'Stock';
+
 export class ProductServiceStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
-        // Define IAM role for Lambda functions
-        const lambdaRole = new iam.Role(this, 'LambdaExecutionRole', {
-            assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-            managedPolicies: [
-                iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-                iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBFullAccess'), // Consider using more restrictive policies in production
-            ],
+        // Define API Gateway
+        const api = new apigateway.RestApi(this, "product-api-service", {
+            restApiName: "Product Service API",
+            description: "This service serves products.",
         });
-        
-        // Add policy for access to S3 resources (as needed)
-        lambdaRole.addToPolicy(new iam.PolicyStatement({
-            actions: ['s3:GetObject'],
-            resources: ['arn:aws:s3:::deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej/*'],
-        }));
 
         // Define DynamoDB tables
         const productsTable = new dynamodb.Table(this, "ProductsTable", {
-            tableName: 'Products',
+            tableName: PRODUCTS_TABLE_NAME,
             partitionKey: {
                 name: "id",
                 type: dynamodb.AttributeType.STRING,
@@ -35,49 +29,135 @@ export class ProductServiceStack extends cdk.Stack {
         });
 
         const stockTable = new dynamodb.Table(this, "StockTable", {
-            tableName: 'Stock',
+            tableName: STOCK_TABLE_NAME,
             partitionKey: {
                 name: "product_id",
                 type: dynamodb.AttributeType.STRING,
             },
         });
 
-        // Define the Lambda function to manage products
-        const manageProducts = new lambda.Function(this, 'ManageProducts', {
-            runtime: lambda.Runtime.NODEJS_20_X,
-            memorySize: 1024,
-            timeout: cdk.Duration.seconds(5),
-            handler: 'manageProducts.handler',
-            code: lambda.Code.fromAsset(join(__dirname, './lambda/manageProducts')),
-            role: lambdaRole,
-            environment: {
-                PRODUCTS_TABLE_NAME: productsTable.tableName,
-                STOCK_TABLE_NAME: stockTable.tableName,
+        const getProductsLambdaFn = new lambda.Function(this, 
+            "get-all-products-lambda-fn",
+            {
+                runtime: lambda.Runtime.NODEJS_20_X,
+                memorySize: 1024,
+                timeout: cdk.Duration.seconds(5),
+                handler: 'index.handler',
+                code: lambda.Code.fromAsset(join(__dirname, './lambda/getProductsList')),
+                environment: {
+                    PRODUCTS_TABLE_NAME: PRODUCTS_TABLE_NAME,
+                    STOCK_TABLE_NAME: STOCK_TABLE_NAME,
+                }
             }
+        );
+
+        const getProductsByIdLambdaFn = new lambda.Function(this,
+            "get-product-by-id-lambda-fn",
+            {
+                runtime: lambda.Runtime.NODEJS_20_X,
+                memorySize: 1024,
+                timeout: cdk.Duration.seconds(5),
+                handler: 'index.handler',
+                code: lambda.Code.fromAsset(join(__dirname, './lambda/getProductsById')),
+                environment: {
+                    PRODUCTS_TABLE_NAME: PRODUCTS_TABLE_NAME,
+                }
+            }
+        );
+
+        const createProductLambdaFn = new lambda.Function(this,
+            "create-product-lambda-fn",
+            {
+                runtime: lambda.Runtime.NODEJS_20_X,
+                memorySize: 1024,
+                timeout: cdk.Duration.seconds(5),
+                handler: 'index.handler',
+                code: lambda.Code.fromAsset(join(__dirname, './lambda/createProduct')),
+                environment: {
+                    PRODUCTS_TABLE_NAME: PRODUCTS_TABLE_NAME,
+                    STOCK_TABLE_NAME: STOCK_TABLE_NAME,
+                },
+                
+            }
+        );
+
+        const getProductsLambdaIntegration = new apigateway.LambdaIntegration(getProductsLambdaFn,
+            {
+                integrationResponses: [
+                  {
+                    statusCode: "200",
+                  },
+                ],
+                proxy: true,
+              }
+        );
+
+        const getProductByIdLambdaIntegration = new apigateway.LambdaIntegration(getProductsByIdLambdaFn,
+            {
+                integrationResponses: [
+                  {
+                    statusCode: "200",
+                  },
+                ],
+                proxy: true,
+              }
+        );
+
+        const createProductLambdaIntegration = new apigateway.LambdaIntegration(createProductLambdaFn,
+            {
+                integrationResponses: [
+                    {
+                    statusCode: "200",
+                    },
+                ],
+                proxy: true,
+            }
+        );
+
+        const productsResource = api.root.addResource("products");
+        const oneProductResource = productsResource.addResource("{id}");
+
+        productsResource.addMethod("GET", getProductsLambdaIntegration, {
+            methodResponses: [{ statusCode: "200" }],
         });
 
-        productsTable.grantReadWriteData(manageProducts);
-        stockTable.grantReadWriteData(manageProducts);
-
-        // Define API Gateway
-        const api = new apigateway.RestApi(this, "product-api", {
-            restApiName: "Product Service API",
-            description: "This service serves products.",
-            defaultCorsPreflightOptions: {
-                allowOrigins: apigateway.Cors.ALL_ORIGINS,
-                allowMethods: apigateway.Cors.ALL_METHODS
-            }
+        productsResource.addMethod("POST", createProductLambdaIntegration, {
+            methodResponses: [{ statusCode: "200" }],
         });
 
-        // Define Lambda integration for managing products
-        const manageProductsIntegration = new apigateway.LambdaIntegration(manageProducts);
+        oneProductResource.addMethod("GET", getProductByIdLambdaIntegration, {
+            methodResponses: [{ statusCode: "200" }],
+        });
 
-        // Define API methods for product management
-        const products = api.root.addResource('products');
-        products.addMethod('GET', manageProductsIntegration); // List or get single product
-        products.addMethod('POST', manageProductsIntegration); // Create a new product
+        productsResource.addCorsPreflight({
+            allowOrigins: ["https://d2b4ydf5lv1f0v.cloudfront.net"],
+            allowMethods: ["GET", "POST"],
+        });
 
-        const singleProduct = products.addResource('{productId}');
-        singleProduct.addMethod('GET', manageProductsIntegration); // Get a single product by ID
+        productsTable.grantReadData(getProductsLambdaFn);
+        stockTable.grantReadData(getProductsLambdaFn);
+
+        productsTable.grantReadData(getProductsByIdLambdaFn);
+        
+        productsTable.grantWriteData(createProductLambdaFn);
+        stockTable.grantWriteData(createProductLambdaFn);
+
+
+
+        // // Define IAM role for Lambda functions
+        // const lambdaRole = new iam.Role(this, 'LambdaExecutionRole', {
+        //     assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        //     managedPolicies: [
+        //         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        //         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonDynamoDBFullAccess'), // Consider using more restrictive policies in production
+        //     ],
+        // });
+        
+        // // Add policy for access to S3 resources (as needed)
+        // lambdaRole.addToPolicy(new iam.PolicyStatement({
+        //     actions: ['s3:GetObject'],
+        //     resources: ['arn:aws:s3:::deploywebappstack-deploymentfrontendbucket67ceb713-dmeuplpxznej/*'],
+        // }));
+    
     }
 }

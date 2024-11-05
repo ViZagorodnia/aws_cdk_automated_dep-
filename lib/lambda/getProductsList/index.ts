@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 const dynamoDBClient = new DynamoDBClient();
 const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const getProductsListHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
     const productsTableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName';
     const stockTableName = process.env.STOCK_TABLE_NAME || 'DefaultStockTableName';
 

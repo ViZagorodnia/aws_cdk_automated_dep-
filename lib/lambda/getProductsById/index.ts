@@ -5,9 +5,9 @@ import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 const dynamoDBClient = new DynamoDBClient();
 const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const getProductsByIdHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
     const tableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName';
-    const productId = event.pathParameters?.productId;
+    const productId = event.pathParameters?.id;
 
     if (!productId) {
         return createResponse(400, { error: 'Product ID is required' });

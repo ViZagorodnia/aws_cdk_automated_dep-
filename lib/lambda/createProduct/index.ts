@@ -7,12 +7,12 @@ import { Product, StockItem } from './types';
 const dynamoDBClient = new DynamoDBClient();
 const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
-export const createProductHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
     if (!event.body) {
         return createResponse(400, 'Invalid request: No body provided');
     }
 
-    let userInput: Omit<Product, 'productId' | 'img'>;
+    let userInput: Omit<Product, 'id' | 'img'>;
     try {
         userInput = JSON.parse(event.body);
     } catch (error) {
@@ -20,21 +20,21 @@ export const createProductHandler = async (event: APIGatewayProxyEvent): Promise
         return createResponse(400, 'Invalid request: Body is not valid JSON');
     }
 
-    const productId = uuidv4();
-    const imgURL = "https://djp9o2z86kcm0.cloudfront.net/assets/images/1.jpg";
+    const id = uuidv4();
+    const imgURL = "https://d2b4ydf5lv1f0v.cloudfront.net/assets/images/1.jpg";
     
     try {
-        await createProduct(userInput, productId, imgURL);
-        return createResponse(201, { message: 'Product created successfully!', productId });
+        await createProduct(userInput, id, imgURL);
+        return createResponse(201, { message: 'Product created successfully!', id });
     } catch (error) {
         console.error('Error interacting with DynamoDB:', error);
         return createResponse(500, 'Failed to create product');
     }
 };
 
-async function createProduct(userInput: Omit<Product, 'productId' | 'img'>, productId: string, imgURL: string) {
-    const product: Product = { ...userInput, productId, img: imgURL };
-    const stockItem: StockItem = { product_id: productId, count: product.count };
+async function createProduct(userInput: Omit<Product, 'id' | 'img'>, id: string, imgURL: string) {
+    const product: Product = { ...userInput, id, img: imgURL };
+    const stockItem: StockItem = { product_id: id, count: product.count };
 
     await documentClient.send(new PutCommand({
         TableName: 'Products',
