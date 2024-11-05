@@ -6,6 +6,8 @@ const dynamoDBClient = new DynamoDBClient();
 const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+    console.log('Incoming request:', event);
+
     const productsTableName = process.env.PRODUCTS_TABLE_NAME || 'DefaultProductsTableName';
     const stockTableName = process.env.STOCK_TABLE_NAME || 'DefaultStockTableName';
 
@@ -37,7 +39,7 @@ async function scanTable(tableName: string) {
 }
 
 function createResponse(statusCode: number, body: object): APIGatewayProxyResult {
-    return {
+    const response = {
         statusCode: statusCode,
         body: JSON.stringify(body),
         headers: {
@@ -46,4 +48,8 @@ function createResponse(statusCode: number, body: object): APIGatewayProxyResult
             "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
         },
     };
+
+    console.log('Response:', response);
+    
+    return response;
 }

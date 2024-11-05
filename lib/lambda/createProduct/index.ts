@@ -8,6 +8,8 @@ const dynamoDBClient = new DynamoDBClient();
 const documentClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+    console.log('Incoming request:', event);
+
     if (!event.body) {
         return createResponse(400, 'Invalid request: No body provided');
     }
@@ -48,7 +50,7 @@ async function createProduct(userInput: Omit<Product, 'id' | 'img'>, id: string,
 }
 
 function createResponse(statusCode: number, message: string | object): APIGatewayProxyResult {
-    return {
+    const response = {
         statusCode: statusCode,
         body: JSON.stringify(typeof message === 'string' ? { message } : message),
         headers: {
@@ -57,4 +59,8 @@ function createResponse(statusCode: number, message: string | object): APIGatewa
             "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
         },
     };
+
+    console.log('Response:', response);
+    
+    return response;
 }
