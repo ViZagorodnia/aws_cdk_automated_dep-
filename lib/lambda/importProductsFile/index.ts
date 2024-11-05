@@ -3,6 +3,8 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export async function handler(event: APIGatewayProxyEvent) {
+  console.log('Incoming request:', event);
+
   const bucketName = process.env.BUCKET_NAME as string;
   const s3 = new S3Client({ region: "us-east-1" });
   
@@ -13,13 +15,13 @@ export async function handler(event: APIGatewayProxyEvent) {
 async function processEvent(event: APIGatewayProxyEvent, s3: S3Client, bucketName: string) {
   const queryParams = event.queryStringParameters;
 
-  if (!queryParams || !queryParams.fileName) {
+  if (!queryParams || !queryParams.name) {
     return { statusCode: 400, body: { message: "File name is required in the query string" }};
   }
   
-  const fileName = queryParams.fileName;
+  const name = queryParams.name;
   const ext = queryParams.ext || "csv";
-  const key = `uploaded/${fileName}.${ext}`;
+  const key = `uploaded/${name}.${ext}`;
   
   try {
     const signedUrl = await generateSignedUrl(s3, bucketName, key);
@@ -35,9 +37,16 @@ async function generateSignedUrl(s3: S3Client, bucketName: string, key: string):
   return getSignedUrl(s3, command);
 }
 
-function formatResponse(statusCode: number, body: object): { statusCode: number, body: string } {
-  return {
+function formatResponse(statusCode: number, body: object): { statusCode: number, body: string, headers: object } {
+  const response = {
     statusCode,
     body: JSON.stringify(body),
+    headers: {
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+    },
   };
+  console.log('Response:', response);
+  return response;
 }

@@ -18,7 +18,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // Merge stock data into products based on 'id'/'product_id' match
         const mergedData = products.map(product => ({
             ...product,
-            stock: stock.find(stockItem => stockItem.product_id === product.id)?.count || 0
+            count: stock.find(stockItem => stockItem.product_id === product.id)?.count || 0
         }));
 
         if (mergedData.length > 0) {
