@@ -11,23 +11,15 @@ import { join } from 'path';
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
-    const corsRule: CorsRule = {
-      allowedMethods: [
-          HttpMethods.GET,
-          HttpMethods.PUT,
-          HttpMethods.POST,
-          HttpMethods.DELETE,
-          HttpMethods.HEAD,
-      ],
-      allowedOrigins: ['https://d2b4ydf5lv1f0v.cloudfront.net/'],
-      allowedHeaders: ['*'],
-  };
     
     const productsFileBucket = new s3.Bucket(this, 'imported-products-file-bucket', {
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      cors: [corsRule]
+      cors: [{
+        allowedOrigins: ["*"],
+        allowedHeaders: ["*"],
+        allowedMethods: [HttpMethods.GET, HttpMethods.PUT, HttpMethods.POST, HttpMethods.DELETE, HttpMethods.HEAD],
+      }]
     });
 
     const api = new apigateway.RestApi(this, "import-products-service", {
@@ -72,13 +64,10 @@ export class ImportServiceStack extends cdk.Stack {
       methodResponses: [{statusCode: '200'}],
     });
 
-    importFileResource.addMethod('POST', importedProductsFileLambdaIntegration, {
-      methodResponses: [{ statusCode: '200' }],
-    });
-
     importFileResource.addCorsPreflight({
       allowOrigins: ["https://d2b4ydf5lv1f0v.cloudfront.net/"],
       allowMethods: ["GET", "POST", "PUT", "DELETE"],
+      allowHeaders: ["*"],
     })
 
     productsFileBucket.grantReadWrite(importedFileParserLambdaFn);
@@ -87,8 +76,8 @@ export class ImportServiceStack extends cdk.Stack {
 
     const bucketPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ["s3:PutObject", "s3:GetObject"],
-      resources: [`${productsFileBucket.bucketArn}/*`],
+      actions: ["s3:GetObject"],
+      resources: [`${productsFileBucket.bucketArn}/uploaded/*`],
     });
 
     importedProductsFileLambdaFn.addToRolePolicy(bucketPolicy);

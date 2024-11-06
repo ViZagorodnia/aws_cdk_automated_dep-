@@ -1,7 +1,6 @@
 import { APIGatewayProxyEvent } from "aws-lambda";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { fromSSO } from "@aws-sdk/credential-providers";
 
 export async function handler(event: APIGatewayProxyEvent) {
   console.log('Incoming request:', event);
@@ -19,18 +18,13 @@ async function processEvent(event: APIGatewayProxyEvent, s3: S3Client, bucketNam
   if (!queryParams || !queryParams.name) {
     return { statusCode: 400, body: { message: "File name is required in the query string" }};
   }
-  if (!event.body) {
-    return { statusCode: 400, body: { message: "File content must be provided in the request body" }};
-  }
   
   const fileName = queryParams.name;
   const key = `uploaded/${fileName}`;
-  const fileContent = Buffer.from(event.body, 'base64');
   
   try {
-    await uploadFile(s3, bucketName, key, fileContent);
     const signedUrl = await generateSignedUrl(s3, bucketName, key);
-    return { statusCode: 200, body: { signedUrl }};
+    return { statusCode: 200, body: signedUrl };
   } catch (error) {
     console.error("Error generating signed URL:", error);
     return { statusCode: 500, body: { message: "Failed to generate signed URL" }};
@@ -42,23 +36,14 @@ async function generateSignedUrl(s3: S3Client, bucketName: string, key: string):
   return getSignedUrl(s3, command);
 }
 
-async function uploadFile(s3: S3Client, bucketName: string, key: string, fileContent: Buffer) {
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-    Body: fileContent
-  });
-  await s3.send(command);
-}
-
-function formatResponse(statusCode: number, body: object): { statusCode: number, body: string, headers: object } {
+function formatResponse(statusCode: number, body: unknown): { statusCode: number, body: string, headers: object } {
   const response = {
     statusCode,
     body: JSON.stringify(body),
     headers: {
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+      'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT',
     },
   };
   console.log('Response:', response);
