@@ -1,52 +1,58 @@
 import { S3Event } from "aws-lambda";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { Readable } from "stream";
-import { parse as csvParse } from "csv-parse";
+import {
+  CopyObjectCommand,
+  CopyObjectCommandInput,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  GetObjectCommandInput,
+  S3Client
+} from '@aws-sdk/client-s3';
+import { Readable } from 'stream';
+import * as csv from 'csv-parser';
 
 const region = process.env.AWS_REGION || "us-east-1"; // Default to us-east-1 if not specified
 
 export async function handler(event: S3Event) {
-  const bucketName = process.env.BUCKET_NAME;
-  
-  if (!bucketName) {
-    console.error("Bucket name is not specified in environment variables.");
-    return;
-  }
-
-  const s3Client = new S3Client({ region });
-  const record = event.Records[0];
-  
+  console.log("Received event:", event);
   try {
-    const csvData = await fetchAndParseCSV(s3Client, bucketName, record.s3.object.key);
-    console.log("CSV Data: ", csvData);
+    const bucketName = process.env.BUCKET_NAME;
+    
+    if (!bucketName) {
+      console.error("Bucket name is not specified in environment variables.");
+      return;
+    }
+
+    const s3Client = new S3Client({ region: region });
+
+    const record = event.Records[0];
+    const key = record.s3.object.key;
+    
+    const getObjectParams: GetObjectCommandInput = {
+      Bucket: bucketName,
+      Key: key,
+    };
+
+    const getObjectCommand = new GetObjectCommand(getObjectParams);
+    const response = await s3Client.send(getObjectCommand);
+
+    const s3Stream = response.Body as Readable;
+
+    s3Stream.pipe(csv())
+      .on('data', (data: any) => console.log(data))
+      .on('end', async () => {
+        const copyObjectParams: CopyObjectCommandInput = {
+            Bucket: bucketName,
+            CopySource: `${bucketName}/${key}`,
+            Key: key.replace('uploaded/', 'parsed/'),
+        };
+
+        const copyObjectCommand = new CopyObjectCommand(copyObjectParams);
+        await s3Client.send(copyObjectCommand);
+
+        const deleteObjectCommand = new DeleteObjectCommand(getObjectParams);
+        await s3Client.send(deleteObjectCommand);
+    });
   } catch (error) {
-    console.error("Error processing record", error);
+    console.error("Error processing S3 event:", error);
   }
-}
-
-async function fetchAndParseCSV(s3Client: S3Client, bucketName: string, objectKey: string): Promise<string[][]> {
-  const getObjectParams = { Bucket: bucketName, Key: objectKey };
-  const response = await s3Client.send(new GetObjectCommand(getObjectParams));
-
-  if (!(response.Body instanceof Readable)) {
-    throw new Error("Expected body to be an instance of stream.Readable");
-  }
-
-  return streamToCSV(response.Body);
-}
-
-function streamToCSV(stream: Readable): Promise<string[][]> {
-  return new Promise((resolve, reject) => {
-    const records: string[][] = [];
-    stream.pipe(csvParse({ delimiter: "|" }))
-      .on("data", (record: string[]) => records.push(record))
-      .on("end", () => {
-        console.log("Stream processing completed.");
-        resolve(records);
-      })
-      .on("error", (error: Error) => {
-        console.error("Error during stream parsing: ", error);
-        reject(error);
-      });
-  });
 }

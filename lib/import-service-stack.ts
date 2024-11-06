@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import { CorsRule, HttpMethods } from "aws-cdk-lib/aws-s3";
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3Notifications from "aws-cdk-lib/aws-s3-notifications";
@@ -10,10 +11,23 @@ import { join } from 'path';
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    const corsRule: CorsRule = {
+      allowedMethods: [
+          HttpMethods.GET,
+          HttpMethods.PUT,
+          HttpMethods.POST,
+          HttpMethods.DELETE,
+          HttpMethods.HEAD,
+      ],
+      allowedOrigins: ['https://d2b4ydf5lv1f0v.cloudfront.net/'],
+      allowedHeaders: ['*'],
+  };
     
     const productsFileBucket = new s3.Bucket(this, 'imported-products-file-bucket', {
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+      cors: [corsRule]
     });
 
     const api = new apigateway.RestApi(this, "import-products-service", {
@@ -58,18 +72,23 @@ export class ImportServiceStack extends cdk.Stack {
       methodResponses: [{statusCode: '200'}],
     });
 
+    importFileResource.addMethod('POST', importedProductsFileLambdaIntegration, {
+      methodResponses: [{ statusCode: '200' }],
+    });
+
     importFileResource.addCorsPreflight({
       allowOrigins: ["https://d2b4ydf5lv1f0v.cloudfront.net/"],
-      allowMethods: ["GET"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE"],
     })
 
-    productsFileBucket.grantRead(importedFileParserLambdaFn);
-    productsFileBucket.grantRead(importedProductsFileLambdaFn);
+    productsFileBucket.grantReadWrite(importedFileParserLambdaFn);
+    productsFileBucket.grantReadWrite(importedProductsFileLambdaFn);
+    productsFileBucket.grantPut(importedProductsFileLambdaFn);
 
     const bucketPolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ["s3:GetObject"],
-      resources: [`${productsFileBucket.bucketArn}/uploaded/*`],
+      actions: ["s3:PutObject", "s3:GetObject"],
+      resources: [`${productsFileBucket.bucketArn}/*`],
     });
 
     importedProductsFileLambdaFn.addToRolePolicy(bucketPolicy);
