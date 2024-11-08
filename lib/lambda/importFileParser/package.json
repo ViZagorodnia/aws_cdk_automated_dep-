@@ -11,6 +11,7 @@
   "types": "./index.d.ts",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.687.0",
     "csv-parser": "^3.0.0"
   }
 }

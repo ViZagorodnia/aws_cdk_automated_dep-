@@ -2,11 +2,12 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import { CorsRule, HttpMethods } from "aws-cdk-lib/aws-s3";
+import { HttpMethods } from "aws-cdk-lib/aws-s3";
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3Notifications from "aws-cdk-lib/aws-s3-notifications";
 import { join } from 'path';
+import { Queue } from "aws-cdk-lib/aws-sqs";
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -26,6 +27,9 @@ export class ImportServiceStack extends cdk.Stack {
       restApiName: "Import Product file Service API",
       description: "This service import products from file.",
     });
+
+    const catalogItemsQueueUrl = cdk.Fn.importValue('CatalogItemsQueueUrl');
+    const catalogItemsQueueArn = cdk.Fn.importValue('CatalogItemsQueueArn');
 
     const importedProductsFileLambdaFn = new lambda.Function(this,
       "import-products-lambda-fn",
@@ -47,7 +51,10 @@ export class ImportServiceStack extends cdk.Stack {
         timeout: cdk.Duration.seconds(5),
         handler: 'index.handler',
         code: lambda.Code.fromAsset(join(__dirname, './lambda/importFileParser')),
-        environment: { BUCKET_NAME: productsFileBucket.bucketName },
+        environment: { 
+          BUCKET_NAME: productsFileBucket.bucketName,
+          SQS_QUEUE_URL: catalogItemsQueueUrl
+        },
       }
     );
 
@@ -86,5 +93,8 @@ export class ImportServiceStack extends cdk.Stack {
       new s3Notifications.LambdaDestination(importedFileParserLambdaFn),
       { prefix: "uploaded/" }
     );
+
+    const catalogItemsQueue = Queue.fromQueueArn(this, 'CatalogItemsQueue', catalogItemsQueueArn);
+    catalogItemsQueue.grantSendMessages(importedFileParserLambdaFn);
   }
 }
