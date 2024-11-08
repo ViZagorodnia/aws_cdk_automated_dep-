@@ -1,5 +1,5 @@
 {
-  "name": "importfileparser",
+  "name": "catalogbatchprocess",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -11,8 +11,8 @@
   "types": "./index.d.ts",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-sqs": "^3.687.0",
-    "csv-parse": "^5.5.6",
-    "csv-parser": "^3.0.0"
+    "joi": "^17.13.3",
+    "uuid": "^11.0.2",
+    "zod": "^3.23.8"
   }
 }

@@ -1,16 +1,13 @@
 import { S3Event } from "aws-lambda";
 import {
-  CopyObjectCommand,
-  CopyObjectCommandInput,
-  DeleteObjectCommand,
   GetObjectCommand,
   GetObjectCommandInput,
   S3Client
 } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
-import { SendMessageBatchCommand, SQSClient } from '@aws-sdk/client-sqs';
-import { pipeline } from 'stream/promises';
+import { SendMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import { parse } from "csv-parse";
+import { error } from "console";
 
 const region = process.env.AWS_REGION || "us-east-1"; // Default to us-east-1 if not specified
 
@@ -18,6 +15,7 @@ export async function handler(event: S3Event) {
   console.log("Received event:", event);
   try {
     const bucketName = process.env.BUCKET_NAME;
+    const queueUrl = process.env.SQS_QUEUE_URL;
     
     if (!bucketName) {
       console.error("Bucket name is not specified in environment variables.");
@@ -27,8 +25,8 @@ export async function handler(event: S3Event) {
     const s3Client = new S3Client({ region: region });
     const sqsClient = new SQSClient({ region: region });
 
-    const record = event.Records[0];
-    const key = record.s3.object.key;
+    const record = event.Records[0].s3;
+    const key = record.object.key;
     
     const getObjectParams: GetObjectCommandInput = {
       Bucket: bucketName,
@@ -38,62 +36,31 @@ export async function handler(event: S3Event) {
     const getObjectCommand = new GetObjectCommand(getObjectParams);
     const response = await s3Client.send(getObjectCommand);
 
-    const s3Stream = response.Body as Readable;
+    if(response.Body instanceof Readable) {
+      const s3Stream = response.Body as Readable;
 
-    const csvParser = parse({
-      columns: true,
-      skip_empty_lines: true,
-    });
-    const batchSize = 5;
-    let batch: Promise<void>[] = [];
-
-    const sendBatch = async () => {
-      const sendMessageBatchCommand = new SendMessageBatchCommand({
-        QueueUrl: process.env.SQS_QUEUE_URL!,
-        Entries: batch.map((item, index) => ({
-          Id: index.toString(),
-          MessageBody: JSON.stringify(item),
-        }))
+      await new Promise<void>((resolve, reject) => {
+        s3Stream.pipe(parse())
+        .on("data", async (data: Record<string, string>) => {
+          console.log("Entry data: ", data);
+          const sendMessageCommand = new SendMessageCommand({
+            QueueUrl: queueUrl,
+            MessageBody: JSON.stringify(data),
+          });
+          await sqsClient.send(sendMessageCommand);
+        })
+        .on("end", () => {
+          console.log("File processing complete.");
+          resolve();
+        })
+        .on("error", (error: Error) => {
+          console.error("Error processing file:", error);
+          reject(error);
+        });
       });
-
-      try {
-        const response = await sqsClient.send(sendMessageBatchCommand);
-        console.log('Batch Message sent:', response);
-      } catch (error) {
-        console.error('Error sending batch message:', error);
-      }
-    };
-
-    await pipeline(
-      s3Stream,
-      csvParser,
-      async function* (source) {
-        for await (const data of source) {
-        batch.push(data);
-
-        if (batch.length >= batchSize) {
-            await sendBatch();
-            batch = [];
-          }
-        }
-
-        if (batch.length > 0) {
-            await sendBatch();
-        }
-      }
-    );
-
-    const copyObjectParams: CopyObjectCommandInput = {
-      Bucket: bucketName,
-      CopySource: `${bucketName}/${key}`,
-      Key: key.replace('uploaded/', 'parsed/'),
-    };
-
-    const copyObjectCommand = new CopyObjectCommand(copyObjectParams);
-    await s3Client.send(copyObjectCommand);
-
-    const deleteObjectCommand = new DeleteObjectCommand(getObjectParams);
-    await s3Client.send(deleteObjectCommand); 
+    } else {
+      console.error("Unexpected S3 response body type:", typeof response.Body);
+    }
   } catch (error) {
     console.error("Error processing S3 event:", error);
   }

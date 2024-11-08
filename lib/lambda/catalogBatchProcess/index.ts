@@ -1,57 +1,65 @@
-import { v4 as uuidv4 } from "uuid";
 import { SQSHandler } from "aws-lambda";
-import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
-import { PublishCommand, SNSClient } from "@aws-sdk/client-sns";
+import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import { z } from "zod";
-import { Product } from "../createProduct/types";
+
+const productBodySchema = z.object({
+  id: z.string(),
+  count: z.number(),
+  price: z.number(),
+  title: z.string(),
+  description: z.string(),
+  img: z.string()
+});
 
 const dynamoDbClient = new DynamoDBClient({ region: "us-east-1" });
 const snsClient = new SNSClient({ region: "us-east-1" });
 
 const tableName = process.env.PRODUCTS_TABLE_NAME;
+const stock = process.env.STOCK_TABLE_NAME;
 const snsTopicArn = process.env.SNS_TOPIC_ARN;
-
-const productSchema = z.object({
-  count: z.number(),
-  price: z.number(),
-  title: z.string(),
-  description: z.string(),
-  img: z.string(),
-});
 
 export const handler: SQSHandler = async (event) => {
   try {
     for (const record of event.Records) {
-      const productData: Product = JSON.parse(record.body);
+      const product: typeof productBodySchema = record.body
+        ? JSON.parse(record.body)
+        : {};
 
-      // product validation
-      const product = productSchema.parse(productData);
+      const parsedProduct = productBodySchema.parse(product);
 
-      const params = {
+      const paramsProducts = {
         TableName: tableName,
         Item: {
-          id: { S: uuidv4() },
-          createdAt: { N: new Date().getTime().toFixed() },
-          count: { N: product.count.toString() },
-          price: { N: product.price.toString() },
-          title: { S: product.title },
-          description: { S: product.description },
-          img: { S: "https://d2b4ydf5lv1f0v.cloudfront.net/assets/images/1.jpg" },
+          id: { S: parsedProduct.id },
+          price: { N: parsedProduct.price.toString() },
+          title: { S: parsedProduct.title },
+          description: { S: parsedProduct.description },
+          img: { S: parsedProduct.img },
         },
       };
 
-      await dynamoDbClient.send(new PutItemCommand(params));
+      const paramsStock = {
+        TableName: stock,
+        Item: {
+          product_id: { S: parsedProduct.id },
+          count: { N: parsedProduct.count.toString() },
+        },
+      };
+      
+      await dynamoDbClient.send(new PutItemCommand(paramsProducts));
+      await dynamoDbClient.send(new PutItemCommand(paramsStock));
 
       const snsMessage = {
-        subject: "New Product was created",
+        subject: "New Product Created",
         message: `A new product has been created: ${JSON.stringify(product)}`,
       };
-
-      await snsClient.send(new PublishCommand({
+      const publishCommand = new PublishCommand({
         TopicArn: snsTopicArn,
         Message: snsMessage.message,
         Subject: snsMessage.subject,
-      }));
+      });
+      await snsClient.send(publishCommand);
     }
   } catch (error) {
     console.error("Error adding products to DynamoDB:", error);
