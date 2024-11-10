@@ -203,6 +203,7 @@ export class ProductServiceStack extends cdk.Stack {
 
         createProductsTopic.addSubscription(lowStockNumberEmailSubscription);
         createProductsTopic.addSubscription(highStokNumberEmailSubscription);
+        createProductsTopic.grantPublish(catalogBatchProcessLambdaFn);
 
         const snsPublishPolicy = new PolicyStatement({
             actions: ['sns:Publish'],
@@ -210,6 +211,7 @@ export class ProductServiceStack extends cdk.Stack {
         });
 
         catalogBatchProcessLambdaFn.addToRolePolicy(snsPublishPolicy);
-    
+        productsTable.grantWriteData(catalogBatchProcessLambdaFn);
+        stockTable.grantWriteData(catalogBatchProcessLambdaFn);
     }
 }

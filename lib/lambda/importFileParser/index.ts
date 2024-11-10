@@ -13,20 +13,21 @@ const region = process.env.AWS_REGION || "us-east-1"; // Default to us-east-1 if
 
 export async function handler(event: S3Event) {
   console.log("Received event:", event);
+  const bucketName = process.env.BUCKET_NAME;
+  const queueUrl = process.env.SQS_QUEUE_URL;
+  
+  if (!bucketName) {
+    console.error("Bucket name is not specified in environment variables.");
+    return;
+  }
+
+  const s3Client = new S3Client({ region: region });
+  const sqsClient = new SQSClient({ region: region });
+
+  const record = event.Records[0];
+  const key = record.s3.object.key;
+
   try {
-    const bucketName = process.env.BUCKET_NAME;
-    const queueUrl = process.env.SQS_QUEUE_URL;
-    
-    if (!bucketName) {
-      console.error("Bucket name is not specified in environment variables.");
-      return;
-    }
-
-    const s3Client = new S3Client({ region: region });
-    const sqsClient = new SQSClient({ region: region });
-
-    const record = event.Records[0].s3;
-    const key = record.object.key;
     
     const getObjectParams: GetObjectCommandInput = {
       Bucket: bucketName,
