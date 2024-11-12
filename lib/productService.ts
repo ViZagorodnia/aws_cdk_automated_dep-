@@ -9,11 +9,13 @@ import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { SubscriptionFilter, Topic } from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import { PolicyStatement } from "aws-cdk-lib/aws-iam";
+import { Queue } from 'aws-cdk-lib/aws-sqs';
 
 const PRODUCTS_TABLE_NAME = 'Products';
 const STOCK_TABLE_NAME = 'Stock';
 
 export class ProductServiceStack extends cdk.Stack {
+    public readonly catalogItemsQueue: Queue; // Make the queue accessible
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
@@ -148,8 +150,11 @@ export class ProductServiceStack extends cdk.Stack {
 
         
         // Define SQS
-        const catalogItemsQueue = new sqs.Queue(this, "product-items-queue-sqs");
-        const SNS_TOPIC_ARN = 'arn:aws:sns:us-east-1:266735837124:ProductServiceStack-CreateProductsTopicE72DA09D-UerSA6me5AbU';
+        this.catalogItemsQueue = new sqs.Queue(this, "product-items-queue-sqs");
+
+        const createProductsTopic = new Topic(this, 'CreateProductsTopic', {
+            displayName: 'Create Products Topic',
+        });
 
         const catalogBatchProcessLambdaFn = new lambda.Function(this,
             "catalog-batch-process-lambda-fn",
@@ -162,28 +167,25 @@ export class ProductServiceStack extends cdk.Stack {
                 environment: {
                     PRODUCTS_TABLE_NAME: PRODUCTS_TABLE_NAME,
                     STOCK_TABLE_NAME: STOCK_TABLE_NAME,
-                    SNS_TOPIC_ARN
+                    SNS_TOPIC_ARN: createProductsTopic.topicArn
                 },
             }
         );
 
-        catalogBatchProcessLambdaFn.addEventSource(new SqsEventSource(catalogItemsQueue, {
+        catalogBatchProcessLambdaFn.addEventSource(new SqsEventSource(this.catalogItemsQueue, {
             batchSize: 5
         }));
 
         new cdk.CfnOutput(this, 'CatalogItemsQueueArn', {
-            value: catalogItemsQueue.queueArn,
+            value: this.catalogItemsQueue.queueArn,
             exportName: 'CatalogItemsQueueArn',
         });
 
         new cdk.CfnOutput(this, 'CatalogItemsQueueUrl', {
-            value: catalogItemsQueue.queueUrl,
+            value: this.catalogItemsQueue.queueUrl,
             exportName: 'CatalogItemsQueueUrl',
         });
 
-        const createProductsTopic = new Topic(this, 'CreateProductsTopic', {
-            displayName: 'Create Products Topic',
-        });
 
         const lowStockNumberEmailSubscription = new EmailSubscription('viktoriazagorodnia@gmail.com', {
             filterPolicy: {
@@ -204,13 +206,6 @@ export class ProductServiceStack extends cdk.Stack {
         createProductsTopic.addSubscription(lowStockNumberEmailSubscription);
         createProductsTopic.addSubscription(highStokNumberEmailSubscription);
         createProductsTopic.grantPublish(catalogBatchProcessLambdaFn);
-
-        const snsPublishPolicy = new PolicyStatement({
-            actions: ['sns:Publish'],
-            resources: [SNS_TOPIC_ARN],
-        });
-
-        catalogBatchProcessLambdaFn.addToRolePolicy(snsPublishPolicy);
         productsTable.grantWriteData(catalogBatchProcessLambdaFn);
         stockTable.grantWriteData(catalogBatchProcessLambdaFn);
     }

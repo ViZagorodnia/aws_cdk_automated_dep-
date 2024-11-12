@@ -2,6 +2,7 @@ import { SQSHandler } from "aws-lambda";
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
 import { z } from "zod";
+import { v4 as uuidv4 } from 'uuid';
 
 const productBodySchema = z.object({
   id: z.string(),
@@ -39,7 +40,7 @@ export const handler: SQSHandler = async (event) => {
       const price = safelyParseNumber(data[2]);
 
       const product = {
-        id: data[0],
+        id: uuidv4(),
         count: count,
         price: price,
         title: data[3],
@@ -84,8 +85,7 @@ export const handler: SQSHandler = async (event) => {
         Message: snsMessage.message,
         Subject: snsMessage.subject,
       });
-      const result = await snsClient.send(publishCommand);
-      console.log('result: ', result)
+      await snsClient.send(publishCommand);
     }
   } catch (error) {
     console.error("Error adding products to DynamoDB:", error);
