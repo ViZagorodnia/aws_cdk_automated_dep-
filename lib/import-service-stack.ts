@@ -1,6 +1,15 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import {
+  AuthorizationType,
+  CfnGatewayResponse,
+  JsonSchemaType,
+  LambdaIntegration,
+  MethodOptions,
+  Model,
+  RestApi,
+  TokenAuthorizer
+} from "aws-cdk-lib/aws-apigateway";
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { HttpMethods } from "aws-cdk-lib/aws-s3";
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -8,6 +17,8 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3Notifications from "aws-cdk-lib/aws-s3-notifications";
 import { join } from 'path';
 import { Queue } from "aws-cdk-lib/aws-sqs";
+import { ServicePrincipal } from "aws-cdk-lib/aws-iam";
+
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -23,7 +34,7 @@ export class ImportServiceStack extends cdk.Stack {
       }]
     });
 
-    const api = new apigateway.RestApi(this, "import-products-service", {
+    const api = new RestApi(this, "import-products-service", {
       restApiName: "Import Product file Service API",
       description: "This service import products from file.",
     });
@@ -57,8 +68,7 @@ export class ImportServiceStack extends cdk.Stack {
         },
       }
     );
-
-    const importedProductsFileLambdaIntegration = new apigateway.LambdaIntegration(importedProductsFileLambdaFn, {
+    const importedProductsFileLambdaIntegration = new LambdaIntegration(importedProductsFileLambdaFn, {
       requestTemplates: {
         "application/json": `{ "name": "$input.params('name')", "ext": "$input.params('ext')" }`
       },
@@ -66,9 +76,101 @@ export class ImportServiceStack extends cdk.Stack {
       proxy: true,
     });
 
+    const basicAuthorizerArn = cdk.Fn.importValue('BasicAuthorizerArn');
+    const basicAuthorizer = lambda.Function.fromFunctionAttributes(this, 'BasicAuthorizer', {
+      functionArn: basicAuthorizerArn,
+      sameEnvironment: true
+    });
+    const methodArn = api.arnForExecuteApi(
+      'GET',
+      '/import',
+      '*'
+    );
+
+    basicAuthorizer.addPermission('InvokeByAPIGateway', {
+      principal: new ServicePrincipal('apigateway.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+      sourceArn: methodArn
+    });
+    const tokenAuthorizer = new TokenAuthorizer(this, 'TokenAuthorizer', {
+      handler: basicAuthorizer,
+      identitySource: 'method.request.header.Authorization',
+    });
+
+    const responseModel = new Model(this, 'ResponseModel', {
+      restApi: api,
+      contentType: 'application/json',
+      schema: {
+          type: JsonSchemaType.STRING,
+      },
+    });
+
+    const methodOptions: MethodOptions = {
+      methodResponses: [
+        {
+          statusCode: '200',
+          responseModels: {
+            'application/json': responseModel,
+          },
+        },
+        {
+          statusCode: '400',
+          responseModels: {
+            'application/json': Model.ERROR_MODEL,
+          },
+        },
+        {
+          statusCode: '401',
+          responseModels: {
+            'application/json': Model.ERROR_MODEL,
+          },
+        },
+        {
+          statusCode: '403',
+          responseModels: {
+            'application/json': Model.ERROR_MODEL,
+          },
+        },
+        {
+          statusCode: '500',
+          responseModels: {
+            'application/json': Model.ERROR_MODEL,
+          },
+        },
+      ],
+      authorizer: tokenAuthorizer,
+      authorizationType: AuthorizationType.CUSTOM,
+    };
+
     const importFileResource = api.root.addResource('import');
-    importFileResource.addMethod('GET', importedProductsFileLambdaIntegration, {
-      methodResponses: [{statusCode: '200'}],
+    importFileResource.addMethod('GET', importedProductsFileLambdaIntegration, methodOptions);
+
+    new CfnGatewayResponse(this, 'APIGatewayUnauthorizedResponse', {
+      restApiId: api.restApiId,
+      responseType: 'UNAUTHORIZED',
+      statusCode: '401',
+      responseParameters: {
+          'gatewayresponse.header.Access-Control-Allow-Origin': "'https://d2b4ydf5lv1f0v.cloudfront.net/'",
+          'gatewayresponse.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+          'gatewayresponse.header.Access-Control-Allow-Methods': "'GET,OPTIONS'"
+      },
+      responseTemplates: {
+          'application/json': '{"message": "Unauthorized. Please provide valid credentials."}'
+      }
+    });
+
+    new CfnGatewayResponse(this, 'APIGatewayForbiddenResponse', {
+      restApiId: api.restApiId,
+      responseType: 'ACCESS_DENIED',
+      statusCode: '403',
+      responseParameters: {
+        'gatewayresponse.header.Access-Control-Allow-Origin': "'https://d2b4ydf5lv1f0v.cloudfront.net/'",
+        'gatewayresponse.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
+        'gatewayresponse.header.Access-Control-Allow-Methods': "'GET,OPTIONS'"
+      },
+      responseTemplates: {
+        'application/json': '{"message": "Forbidden. You do not have permission to access this resource."}'
+      }
     });
 
     importFileResource.addCorsPreflight({
